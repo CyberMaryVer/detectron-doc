@@ -220,4 +220,10 @@ Everything is ready now
  !python detectron2/demo/demo.py --config-file detectron2/configs/COCO-Keypoints/keypoint_rcnn_R_50_FPN_3x.yaml --video-input video-clip2.mp4 --confidence-threshold 0.6 --output video-output2.mp4 \
 --opts MODEL.WEIGHTS detectron2://COCO-Keypoints/keypoint_rcnn_R_50_FPN_3x/137849621/model_final_a6e10b.pkl
  ```
+
 ![img](images/video.gif)
+
+[![video](https://img.youtube.com/vi/OdlpDfjPHSg/0.jpg)](https://www.youtube.com/watch?v=OdlpDfjPHSg)
+
+
+[Google Colab notebook](https://colab.research.google.com/drive/1t-OqAWeoxnm9t7ZjpViaUEr4yeHxQUNc?usp=sharing)
