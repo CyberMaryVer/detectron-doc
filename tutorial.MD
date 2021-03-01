@@ -168,6 +168,7 @@ v = Visualizer(im[:,:,::-1], MetadataCatalog.get(cfg.DATASETS.TRAIN[0]), scale=1
 out = v.draw_instance_predictions(outputs["instances"].to("cpu"))
 cv2_imshow(out.get_image()[:, :, ::-1])
 ```
+![img](images/ex1.png)
 
 # Video - preparing environment
 
@@ -219,3 +220,4 @@ Everything is ready now
  !python detectron2/demo/demo.py --config-file detectron2/configs/COCO-Keypoints/keypoint_rcnn_R_50_FPN_3x.yaml --video-input video-clip2.mp4 --confidence-threshold 0.6 --output video-output2.mp4 \
 --opts MODEL.WEIGHTS detectron2://COCO-Keypoints/keypoint_rcnn_R_50_FPN_3x/137849621/model_final_a6e10b.pkl
  ```
+![img](images/video.gif)
