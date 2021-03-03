@@ -221,7 +221,7 @@ Everything is ready now
 --opts MODEL.WEIGHTS detectron2://COCO-Keypoints/keypoint_rcnn_R_50_FPN_3x/137849621/model_final_a6e10b.pkl
  ```
 
-![img](images/video.gif)
+[comment]: <> (![img]&#40;images/video.gif&#41;)
 
 [![video](https://img.youtube.com/vi/OdlpDfjPHSg/0.jpg)](https://www.youtube.com/watch?v=OdlpDfjPHSg)
 
