@@ -221,9 +221,9 @@ Everything is ready now
 --opts MODEL.WEIGHTS detectron2://COCO-Keypoints/keypoint_rcnn_R_50_FPN_3x/137849621/model_final_a6e10b.pkl
  ```
 
-[comment]: <> (![img]&#40;images/video.gif&#41;)
+![img](images/video.gif)
 
-[![video](https://img.youtube.com/vi/OdlpDfjPHSg/0.jpg)](https://www.youtube.com/watch?v=OdlpDfjPHSg)
+[comment]: <> ([![video]&#40;https://img.youtube.com/vi/OdlpDfjPHSg/0.jpg&#41;]&#40;https://www.youtube.com/watch?v=OdlpDfjPHSg&#41;)
 
 
 [Google Colab notebook](https://colab.research.google.com/drive/1t-OqAWeoxnm9t7ZjpViaUEr4yeHxQUNc?usp=sharing)
