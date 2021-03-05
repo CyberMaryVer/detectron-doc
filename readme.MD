@@ -3,25 +3,34 @@
 ## Comparing Detectron2 with other libraries
 
 ### Detectron2
+
 * Image
+
 ![img](images/ex1.png)
   
 * Video
+
 ![img](images/dtr.gif)
 
 ### AlphaPose
+
 * Image
+
 ![img](images/example_.jpg)
   
 * Video
+
 ![img](images/alpha.gif)
 
 ### Google Mediapipe
+
 * Image
+
 ![img](images/google.png)
   
 * Video
-![img](images/google.gif)
+
+![img](images/google2.gif)
 
 ## Get 3d from 2d video
 
