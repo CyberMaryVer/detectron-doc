@@ -1,4 +1,5 @@
 mykey.pem
 detectron2
 .vscode
+.vs
 test.py
