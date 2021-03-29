@@ -4,7 +4,7 @@
 **There are only the configurations which were used in notebooks*
 
 Name | Detectron2 | Mediapipe | Alphapose
----|---|---|---
+---|:----:|:----:|:----:
 GitHub | [detectron2](https://github.com/facebookresearch/detectron2) | [mediapipe](https://github.com/google/mediapipe) | [AlphaPose](https://github.com/MVIG-SJTU/AlphaPose)
 Description |  Object detection platform | Estimates the full 3D body pose. Optimized for on-device, real-time fitness applications | Multi-person pose estimator
 Architecture | Mask R-CNN (Resnet101) | Mobilenet V2 | Resnet

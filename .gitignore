@@ -1,5 +1,7 @@
 mykey.pem
-detectron2
+detectron
+venv
 .vscode
 .vs
 test.py
+tests
