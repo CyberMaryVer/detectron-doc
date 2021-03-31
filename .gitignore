@@ -1,7 +1,8 @@
 mykey.pem
+results.csv
 detectron
 venv
 .vscode
 .vs
-test.py
+pose.py
 tests
