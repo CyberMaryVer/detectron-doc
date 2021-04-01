@@ -15,7 +15,11 @@ Keypoints | 17 | 33 | 17
 
 
 ### Detectron2 
-[<img src="https://colab.research.google.com/assets/colab-badge.svg" align="center">](https://colab.research.google.com/drive/1HekDaF5oOv5sXH1bHvhecMUG5ErU3-aC?usp=sharing)
+Detectron2 Tutorial - working with outputs [<img src="https://colab.research.google.com/assets/colab-badge.svg" align="center">](https://colab.research.google.com/drive/1xDM-XmZdxcpC6DdA1ihb6QVaftqA-L6M?usp=sharing)
+
+Detectron2 Tutorial - video inference [<img src="https://colab.research.google.com/assets/colab-badge.svg" align="center">](https://colab.research.google.com/drive/1zHuw-xRPl8iIpJIW7mkr_4He8OMDAXer?usp=sharing)
+
+Detectron2 Tutorial - training with a COCO dataset [<img src="https://colab.research.google.com/assets/colab-badge.svg" align="center">](https://colab.research.google.com/drive/1ka8tgaa1p0YN4ipCNJCZZ9SohB5fXcPE?usp=sharing)
 
 * Image
 
