@@ -63,6 +63,14 @@ def get_central_points(keypoint_dict):
     return points_to_connect
 
 
+def get_text_coords(keypoint_coords, scale):
+    # (x - 18, y + 8) for 3
+    # (x - 10, y + 5) for 1
+    x, y = keypoint_coords
+    x, y = x - int(8 * scale), y + int(4 * scale)
+    return x, y
+
+
 def get_updated_keypoint_dict(keypoint_dict):
     keypoint_dict_ = keypoint_dict.copy()
     points_to_connect = get_central_points(keypoint_dict)
@@ -112,7 +120,7 @@ def draw_angles(keypoint_dict, side=None):
     return angles_dict
 
 
-def define_symmetry(keypoint_dict, angles_dict, allowed_diff=15):
+def define_symmetry(angles_dict, allowed_diff=15):
     n1 = len([key for key in angles_dict.keys() if "right" in key])
     n2 = len([key for key in angles_dict.keys() if "left" in key])
     assert n1 == n2
@@ -126,6 +134,18 @@ def define_symmetry(keypoint_dict, angles_dict, allowed_diff=15):
         if abs(diff) > allowed_diff:
             is_wrong.update({angle: diff})
     return is_wrong
+
+
+def check_squats(keypoint_dict_updated, allowed_diff=5):
+    buttock = keypoint_dict_updated["hip_center"]
+    x1, y1, z1 = keypoint_dict_updated["left_knee"]
+    x2, y2, z2 = keypoint_dict_updated["right_knee"]
+    x = float((x1 + x2) / 2)
+    y = float((y1 + y2) / 2)
+    z = float((z1 + z2) / 2)
+    knee = (x, y, z)
+    is_wrong = (buttock[1] - knee[1]) > allowed_diff
+    return is_wrong, (buttock, knee)
 
 
 if __name__ == "__main__":

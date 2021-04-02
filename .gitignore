@@ -5,6 +5,5 @@ venv
 .vscode
 .vs
 .idea
-pose.py
 tests
 *.mp4
