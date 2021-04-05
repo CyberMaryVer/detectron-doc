@@ -33,6 +33,9 @@ _TEST = args.test
 _SAVE_OUTPUT = args.output
 _SAVE_FILE_NAME = args.output_name
 _DEBUG_VIDEO = args.debug_video
+_DEBUG_PATH_TO_VIDEO = "tests/s.mp4"
+
+_TRACKING_DEBUG = True
 
 # visualisation parameters
 _INSTANCE_NUM = args.instance
@@ -48,6 +51,15 @@ _SCALE = args.scale
 if __name__ == "__main__":
     cfg = build_cfg(MODEL, DEVICE, THRESHOLD)
     predictor = DefaultPredictor(cfg)
+
+    if args.debug_video is not None:
+        debug_params = [int(x) for x in args.debug_video]
+    else:
+        debug_params = None
+
+    if _EXERCISE is not None and _VIDEO is not None:
+        _DEBUG_PATH_TO_VIDEO = _VIDEO
+        _VIDEO = None
 
     if _IMAGE is not None and _VIDEO is not None:
         print("You indicated both --image and --video parameter. Inference will be done only for image. "
@@ -88,11 +100,10 @@ if __name__ == "__main__":
         cv2.imwrite(output_name, output_image)
 
     elif _VIDEO is not None:
-        debug_params = [int(x) for x in args.debug_video]
         save_path = _SAVE_FILE_NAME if _SAVE_FILE_NAME is not None else None
 
         video = DetectronVideo(_VIDEO, cfg)
-        total = video.num_frames  # debug_params[1]
+        total = video.num_frames if debug_params is None else debug_params[1]
         for vis_frame, _ in tqdm.tqdm(video.run_on_video(debug_params=debug_params,
                                                          side=_SIDE,
                                                          skeleton=_CONNECTIONS,
@@ -111,6 +122,12 @@ if __name__ == "__main__":
         if _CSV:
             results = video.tracking
             save_results_to_csv(results)
+
+        # if _TRACKING_DEBUG:
+        #     import pickle as pk
+        #     with open("tracking.pickle", "wb") as f:
+        #         pk.dump(video.tracking, f)
+        #     print(len(video.tracking), video.tracking[0])
 
     elif _EXERCISE is not None:
 
@@ -136,13 +153,10 @@ if __name__ == "__main__":
             cv2.destroyAllWindows()
 
         else:
-            _DEBUG_PATH_TO_VIDEO = "tests/s.mp4"
-            debug_params = [int(x) for x in args.debug_video]
-            # debug_params = tuple([debug_params[0], debug_params[1]])
             save_path = _SAVE_FILE_NAME if _SAVE_FILE_NAME is not None else None
 
             video = DetectronVideo(_DEBUG_PATH_TO_VIDEO, cfg)
-            total = video.num_frames  # debug_params[1]
+            total = video.num_frames if debug_params is None else debug_params[1]
             for vis_frame, keypoint_dict in tqdm.tqdm(video.run_on_video(debug_params=debug_params,
                                                                          side=_SIDE,
                                                                          skeleton=_CONNECTIONS,
@@ -167,8 +181,6 @@ if __name__ == "__main__":
                 save_results_to_csv(results)
 
     elif _TEST:
-        from geometry import test_dict
-
         cam = cv2.VideoCapture(0, cv2.CAP_DSHOW)
         # cv2.OPENCV_VIDEOIO_DEBUG = 0
 
@@ -181,10 +193,6 @@ if __name__ == "__main__":
 
         cam.release()
         cv2.destroyAllWindows()
-
-        print("EXAMPLE OF KEYPOINTS OUTPUTS")
-        for item in test_dict.items():
-            print(item)
 
     else:
         print("Run module with --help parameter to learn about the usage")

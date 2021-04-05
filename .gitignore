@@ -1,7 +1,10 @@
 mykey.pem
 results.csv
 detectron
+sandbox.py
+exercises.py
 venv
+mpipe
 .vscode
 .vs
 .idea

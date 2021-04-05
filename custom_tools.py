@@ -1,24 +1,19 @@
 import numpy as np
-from PIL import ImageFont, ImageDraw, Image
-import logging
+# from PIL import ImageFont, ImageDraw, Image
+# import logging
 
 import cv2
 import csv
 import os, time
-import torch
 
-from detectron2.data import MetadataCatalog
-from detectron2 import model_zoo
-from detectron2.engine import DefaultPredictor
-from predictor import AsyncPredictor
-# from detectron2.config import get_cfg
-# from detectron2.utils.file_io import PathManager
-# from detectron2.utils.colormap import random_color
+# import torch #########################
+# from detectron2.data import MetadataCatalog #########################
+# from detectron2.engine import DefaultPredictor #########################
+# from predictor import AsyncPredictor #########################
 
-from geometry import draw_angles
+from geometry import get_angle_dict
 from geometry import define_symmetry
-from geometry import get_text_coords
-from geometry import check_squats
+from geometry import center_of_gravity
 from geometry import get_updated_keypoint_dict
 
 _SMALL_OBJECT_AREA_THRESH = 1000
@@ -51,20 +46,37 @@ KEYPOINT_NAMES = [
 ]
 
 CONNECTION_RULES = [
-    ('left_ear', 'left_eye', (255, 255, 255)),
-    ('right_ear', 'right_eye', (255, 255, 255)),
-    ('left_eye', 'nose', (255, 255, 255)),
-    ('nose', 'right_eye', (255, 255, 255)),
-    ('left_shoulder', 'right_shoulder', (0, 255, 55)),
-    ('left_shoulder', 'left_elbow', (0, 255, 0)),
-    ('right_shoulder', 'right_elbow', (0, 255, 0)),
-    ('left_elbow', 'left_wrist', (0, 255, 0)),
-    ('right_elbow', 'right_wrist', (0, 255, 0)),
-    ('left_hip', 'right_hip', (0, 255, 55)),
-    ('left_hip', 'left_knee', (0, 255, 0)),
-    ('right_hip', 'right_knee', (0, 255, 0)),
-    ('left_knee', 'left_ankle', (0, 255, 0)),
-    ('right_knee', 'right_ankle', (0, 255, 0))
+    ('left_ear', 'left_eye', (255, 255, 255)),  # 0
+    ('right_ear', 'right_eye', (255, 255, 255)),  # 1
+    ('left_eye', 'nose', (255, 255, 255)),  # 2
+    ('nose', 'right_eye', (255, 255, 255)),  # 3
+    ('left_shoulder', 'right_shoulder', (0, 255, 55)),  # 4
+    ('left_shoulder', 'left_elbow', (0, 255, 0)),  # 5
+    ('right_shoulder', 'right_elbow', (0, 255, 0)),  # 6
+    ('left_elbow', 'left_wrist', (0, 255, 0)),  # 7
+    ('right_elbow', 'right_wrist', (0, 255, 0)),  # 8
+    ('left_hip', 'right_hip', (0, 255, 55)),  # 9
+    ('left_hip', 'left_knee', (0, 255, 0)),  # 10
+    ('right_hip', 'right_knee', (0, 255, 0)),  # 11
+    ('left_knee', 'left_ankle', (0, 255, 0)),  # 12
+    ('right_knee', 'right_ankle', (0, 255, 0))  # 13
+]
+CONNECTION_RULES_ADDITION1 = [
+    ('neck_center', 'hip_center', (0, 255, 0)),
+    ('neck_center', 'nose', (0, 255, 0)),
+]
+
+CONNECTION_RULES_ADDITION2 = [
+    ('head_center', 'left_shoulder', (255, 255, 255)),
+    ('head_center', 'right_shoulder', (255, 255, 255)),
+    ('head_center', 'neck_center', (255, 255, 255))
+]
+
+CONNECTION_RULES_ADDITION3 = [
+    ('hip_center', 'left_hip', (0, 255, 0)),
+    ('hip_center', 'right_hip', (0, 255, 0)),
+    ('neck_center', 'left_shoulder', (0, 255, 0)),
+    ('neck_center', 'right_shoulder', (0, 255, 0)),
 ]
 
 
@@ -135,6 +147,125 @@ def extract_predictions(predictions):
     return extracted
 
 
+def draw_skeleton(img, keypoints, side=None, threshold=0, thickness=1,
+                  headless=False, draw_invisible=False, color_invisible=(188, 188, 188)):
+    """
+    This function draws connections on the image and returns image
+    """
+    rules = CONNECTION_RULES
+    additional_rules = CONNECTION_RULES_ADDITION1
+    for addition in additional_rules:
+        rules.append(addition)
+
+    if len(keypoints) == 17:
+        keypoints = get_updated_keypoint_dict(keypoints)
+
+    if headless:
+        xrs, yrs, _ = keypoints["right_shoulder"]
+        xls, yls, _ = keypoints["left_shoulder"]
+        x1, y1, t1 = keypoints["nose"]
+        x2, y2, t2 = keypoints["neck_center"]
+        # calculate point to connect the lines
+        x = (x1 + x2) // 2
+        y = (y1 + y2) // 2
+        t = (t1 + t2) / 2
+        keypoints.update({"head_center": (x, y, t)})
+        additional_rules = CONNECTION_RULES_ADDITION2
+        rules = rules[4:-1]
+        for addition in additional_rules:
+            rules.append(addition)
+
+    if side is not None:
+        additional_rules = CONNECTION_RULES_ADDITION3
+        for addition in additional_rules:
+            rules.append(addition)
+
+        if side == "L":
+            side, other = "left", "right"
+        else:
+            side, other = "right", "left"
+
+    for rule in rules:
+        # set visibility
+        draw_connection = True
+
+        if side is not None:
+            # print(side, rule[0], rule[1], side in rule[0] and side in rule[1])
+            if side in rule[0] and side in rule[1]:
+                draw_connection = True
+            elif "center" in rule[0]:
+                draw_connection = True
+                if other in rule[1]:
+                    draw_connection = False
+            else:
+                draw_connection = False
+
+        if draw_connection:
+            try:
+                p1, p2, color = rule
+                x1, y1, t1 = keypoints[p1]
+                x2, y2, t2 = keypoints[p2]
+
+                if t1 > threshold and t2 > threshold:
+                    img = cv2.line(img, (int(x1), int(y1)), (int(x2), int(y2)), color,
+                                   thickness=thickness, lineType=cv2.LINE_AA)
+                elif draw_invisible:
+                    color = color_invisible
+                    img = cv2.line(img, (int(x1), int(y1)), (int(x2), int(y2)), color,
+                                   thickness=thickness, lineType=cv2.LINE_AA)
+                else:
+                    pass
+            except Exception as e:
+                print("Draw connection error:", e)
+                pass
+
+    return img
+
+
+def draw_joints(img, keypoints, threshold=0, side=None, headless=False, color=(255, 255, 255),
+                draw_invisible=False, color_invisible=(188, 188, 188), point_radius=6):
+    """
+    This function draws keypoints on the image and returns image
+    """
+    if len(keypoints) == 17:
+        keypoints = get_updated_keypoint_dict(keypoints)
+
+    if side is not None:
+        side = "right" if side == "R" else "left"
+
+    keypoints_visibility = {x: True for x in keypoints.keys()}
+
+    for name, i in keypoints.items():
+        # set visibility for each side
+        draw_point = True
+
+        if side is not None and side not in name:
+            draw_point = False
+            keypoints_visibility.update({name: draw_point})
+
+        if headless:
+            rules_for_head = ["eye", "ear", "nose"]
+
+            if not name == "nose":
+                name = name.split("_")[1]
+
+            if name in rules_for_head:
+                draw_point = False
+                keypoints_visibility.update({name: draw_point})
+
+        if draw_point:
+            x, y, t = int(i[0]), int(i[1]), i[2]
+            if t > threshold:
+                img = cv2.circle(img, (x, y), radius=point_radius, color=color, thickness=-1, lineType=cv2.LINE_AA)
+            elif t < threshold and draw_invisible:
+                color = color_invisible
+                img = cv2.circle(img, (x, y), radius=point_radius, color=color, thickness=-1, lineType=cv2.LINE_AA)
+            else:
+                pass
+
+    return img, keypoints_visibility
+
+
 def draw_text(img, text, font=cv2.FONT_HERSHEY_COMPLEX_SMALL, position=(10, 10), font_scale=0.6,
               font_thickness=1, text_color=(0, 0, 0), text_color_bg=(255, 255, 255), alignment="center"):
     """
@@ -146,13 +277,16 @@ def draw_text(img, text, font=cv2.FONT_HERSHEY_COMPLEX_SMALL, position=(10, 10),
     text_size, _ = cv2.getTextSize(text, font, font_scale, font_thickness)
     # space
     text_w, text_h = [int(x) for x in text_size]
-    cv2.rectangle(img, position, (x + text_w, y + text_h + 5), text_color_bg, -1)
-    cv2.putText(img, text, (x, y + text_h), font, font_scale, text_color, font_thickness)
+    cv2.rectangle(img, position, (x + text_w, y + text_h + 5), text_color_bg, -1, lineType=cv2.LINE_AA)
+    cv2.putText(img, text, (x, y + text_h), font, font_scale, text_color, font_thickness, lineType=cv2.LINE_AA)
 
     return img
 
 
 def draw_angle_in_circle(img: object, angle: int, xy_coordinates: tuple, scale=None, symmetry=True):
+    """
+    draws angle value in a circle
+    """
     scale = 1 if scale is None else scale
     thickness = 1 if scale is None else int(scale * 1)
     shift = 0 if scale is None else int((len(str(angle)) == 3) * scale * 2.4)
@@ -170,254 +304,145 @@ def draw_angle_in_circle(img: object, angle: int, xy_coordinates: tuple, scale=N
     x1, y1 = x - int(8 * scale) - shift, y - int(6 * scale)
     x2, y2 = x - int(8 * scale) - shift, y + int(4 * scale)
 
-    img = cv2.circle(img, (x, y), radius=radius, color=circle_color, thickness=-1)
-    img = cv2.putText(img, f"{angle}", (x2, y2), cv2.FONT_HERSHEY_COMPLEX,
-                      fontScale=font_scale,
-                      color=text_color,
-                      thickness=thickness)
+    img = cv2.circle(img, (x, y), radius=radius, color=circle_color, thickness=-1, lineType=cv2.LINE_AA)
+    img = cv2.putText(img, f"{angle}", (x2, y2), cv2.FONT_HERSHEY_COMPLEX, fontScale=font_scale,
+                      color=text_color, thickness=thickness, lineType=cv2.LINE_AA)
     if symmetry:
-        img = cv2.putText(img, f"+/-", (x1, y1), cv2.FONT_HERSHEY_COMPLEX,
-                          fontScale=font_scale * .7,
-                          color=(25, 100, 25),
-                          thickness=1)
+        img = cv2.putText(img, f"+/-", (x1, y1), cv2.FONT_HERSHEY_COMPLEX, fontScale=font_scale * .7,
+                          color=(25, 100, 25), thickness=1, lineType=cv2.LINE_AA)
 
     return img
 
 
-def draw_box_with_text(img, box_coord, text=None, edge_color=(0, 255, 0), linewidth=2):
+def draw_box_with_text(img, text=None, edge_color=(0, 255, 0), border=2, mode=0):
     """
     draws box around
     """
-    x0, y0, x1, y1 = box_coord
-    print(x0, x1, y0, y1)
-    width = x1 - x0
-    height = y1 - y0
+    width, height = img.shape[1::-1]
+    scale = max(width, height) / 400
+    font_scale, font_thickness = .4 * scale, int(scale)
 
-    img = cv2.rectangle(img, (x0, y0), (x1 + width, y1 + height), edge_color, linewidth)
+    if mode == 0:  # standard mode
+        img = cv2.copyMakeBorder(img, border + 18, border, border, border, cv2.BORDER_CONSTANT, value=edge_color)
+
+    elif mode == 1:  # low vision
+        img = cv2.copyMakeBorder(img, height // 3, border, border, border, cv2.BORDER_CONSTANT, value=edge_color)
+        font_scale, font_thickness = 1.4 * scale, int(2 * scale)
+
     if text is not None:
-        img = draw_text(img, text, text_color_bg=edge_color, position=(x0, y0))
+        x = y = border
+        img = draw_text(img, text, text_color_bg=edge_color, position=(x + 2, y + 2), font_scale=font_scale,
+                        font_thickness=font_thickness)
 
     return img
 
 
 def visualize_keypoints(keypoint_dict, im_wk, skeleton=1, side=None, mode=None, scale=None, threshold=None,
-                        color_mode=None):
+                        color_mode=None, draw_invisible=False, joints=True, dict_is_updated=False):
     if keypoint_dict is None:
         return im_wk
-
-    if color_mode is None:
-        skeleton_color1 = skeleton_color2 = (0, 255, 0)
-        point_color1 = point_color2 = (255, 255, 255)
-    else:
-        skeleton_color1 = (0, 255, 0)
-        skeleton_color2 = (188, 188, 188)
-        point_color1 = (0, 255, 0)
-        point_color2 = (188, 188, 188)
-
-    rules = CONNECTION_RULES
     if side not in ["L", "R", None]:
         print("Error: wrong side parameter")
         return 1
 
-    threshold = .5 if threshold is None else threshold
+    if not dict_is_updated:  # for compability with mediapipe predictor
+        all_keypoints = get_updated_keypoint_dict(keypoint_dict)
+    else:
+        all_keypoints = keypoint_dict
+
+    threshold = _KEYPOINT_THRESHOLD if threshold is None else threshold
+
+    if color_mode is None:
+        point_color1 = point_color2 = (255, 255, 255)
+    else:
+        point_color1 = (0, 255, 0)
 
     if scale is not None:
         thickness = int(scale * 2.4)
         point_radius = int(scale * 6.4)
-        fontscale = .3 * scale
+        font_scale = .3 * scale
     else:
         thickness = 2
         point_radius = 6
-        fontscale = .3
+        font_scale = .3
 
     if skeleton != 0:
+        headless = True if skeleton == 2 else False
+        im_wk = draw_skeleton(im_wk, all_keypoints, side=side, threshold=threshold, thickness=thickness,
+                              headless=headless, draw_invisible=draw_invisible)
 
-        for rule in rules:
+    if joints:
+        headless = True if skeleton == 2 else False
+        im_wk, vis = draw_joints(im_wk, all_keypoints, threshold=threshold, side=side, headless=headless,
+                                 color=point_color1, draw_invisible=draw_invisible, point_radius=point_radius)
 
-            # set visibility for each side
-            if side == "R":
-                if "right" in rule[0] and "right" in rule[1]:
-                    draw_connection = True
-                else:
-                    draw_connection = False
-            elif side == "L":
-                if "left" in rule[0] and "left" in rule[1]:
-                    draw_connection = True
-                else:
-                    draw_connection = False
-            else:
-                if skeleton == 2:
-                    rules_for_head = ["eye", "ear", "nose"]
-                    draw_connection = True
+        for name, visibility in vis.items():
 
-                    for r in rule[:-1]:
-
-                        if not r == "nose":
-                            r = r.split("_")[1]
-
-                        if r in rules_for_head:
-                            draw_connection = False
-                else:
-                    draw_connection = True
-
-            if draw_connection:
-                try:
-                    p1, p2, color = rule
-                    color = skeleton_color1
-                    x1, y1, t1 = keypoint_dict[p1]
-                    x2, y2, t2 = keypoint_dict[p2]
-                    if t1 < threshold and t2 < threshold:
-                        color = skeleton_color2
-                    im_wk = cv2.line(im_wk, (int(x1), int(y1)), (int(x2), int(y2)), color, thickness=thickness)
-                except:
-                    pass
-
-        # draw central line
-        points_to_use = [('left_hip', 'right_hip'), ('left_shoulder', 'right_shoulder')]
-        points_to_connect = []  # should be ['hip_centre, 'shoulder_centre', 'nose']
-
-        for p in points_to_use:
-            try:
-                x1, y1, _ = keypoint_dict[p[0]]
-                x2, y2, _ = keypoint_dict[p[1]]
-                x = int((x1 + x2) / 2)
-                y = int((y1 + y2) / 2)
-                points_to_connect.append((x, y))
-            except:
-                pass
-
-        x, y, _ = keypoint_dict['nose']
-        points_to_connect.append((int(x), int(y)))
-        colors = (skeleton_color1, point_color1)
-        im_wk = cv2.line(im_wk, points_to_connect[0], points_to_connect[1], colors[0], thickness=thickness)
-        if skeleton == 1:
-            im_wk = cv2.line(im_wk, points_to_connect[1], points_to_connect[2], colors[1], thickness=thickness)
-        elif skeleton == 2:
-            xrs, yrs, _ = keypoint_dict["right_shoulder"]
-            xls, yls, _ = keypoint_dict["left_shoulder"]
-            x1, y1, _ = keypoint_dict["nose"]
-            x2, y2 = points_to_connect[1]
-            x = int((x1 + x2) / 2)
-            y = int((y1 + y2) / 2)
-            im_wk = cv2.line(im_wk, (int(xrs), int(yrs)), (x, y), colors[1], thickness=thickness)
-            im_wk = cv2.line(im_wk, (int(xls), int(yls)), (x, y), colors[1], thickness=thickness)
-
-        if side is not None:
-            if side == "L":
-                hip, shoulder = "left_hip", "left_shoulder"
-            elif side == "R":
-                hip, shoulder = "right_hip", "right_shoulder"
-            else:
-                hip = shoulder = None
-            x1, y1, _ = keypoint_dict[hip]
-            p1 = (int(x1), int(y1))
-            x2, y2, _ = keypoint_dict[shoulder]
-            p2 = (int(x2), int(y2))
-            im_wk = cv2.line(im_wk, points_to_connect[0], p1, colors[0], thickness=thickness)
-            im_wk = cv2.line(im_wk, points_to_connect[1], p2, colors[0], thickness=thickness)
-
-    for name, i in keypoint_dict.items():
-        # set visibility for each side
-        if side == "R":
-            if "right" in name:
-                draw_point = True
-            else:
-                draw_point = False
-        elif side == "L":
-            if "left" in name:
-                draw_point = True
-            else:
-                draw_point = False
-        else:
-            draw_point = True
-
-            if skeleton == 2:
-                rules_for_head = ["eye", "ear", "nose"]
-
-                if not name == "nose":
-                    name = name.split("_")[1]
-
-                if name in rules_for_head:
-                    draw_point = False
-
-        if draw_point:
-            x, y = int(i[0]), int(i[1])
-            t = i[2]
-            color = point_color1
-            if t < threshold:
-                color = point_color2
-            im_wk = cv2.circle(im_wk,
-                               (x, y),
-                               radius=point_radius,
-                               color=color,
-                               thickness=-1)
-
-            if mode == "keypoints_names":
+            if mode == "keypoints_names" and visibility:
+                # """displays keypoint names"""
+                x, y, _ = all_keypoints[name]
                 name = name.replace("_", " ")
-                im_wk = draw_text(im_wk, name, font=cv2.FONT_HERSHEY_SIMPLEX, position=(x, y), font_scale=fontscale)
+                print(x, y)
+                im_wk = draw_text(im_wk, name, font=cv2.FONT_HERSHEY_SIMPLEX, position=(int(x), int(y)),
+                                  font_scale=font_scale)
 
-            elif mode == "angles":
-                angles_dict = draw_angles(keypoint_dict, side=side)
-                # angle_point_radius = point_radius * 2
+            elif mode == "angles" and visibility:
+                # """displays angles values"""
+                angles_dict = get_angle_dict(keypoint_dict, side=side)
+
                 for kp, kp_data in angles_dict.items():
                     x, y = int(kp_data[1][0]), int(kp_data[1][1])
-                    angle_value = int(kp_data[0])
+                    angle_value = kp_data[0]
                     im_wk = draw_angle_in_circle(im_wk, angle_value, (x, y), scale=scale, symmetry=False)
-                    # x_, y_ = get_text_coords((x, y), scale)
-                    # im_wk = cv2.circle(im_wk,
-                    #                    (x, y),
-                    #                    radius=angle_point_radius,
-                    #                    color=(255, 255, 255),
-                    #                    thickness=-1)
-                    # im_wk = cv2.putText(im_wk, f"{kp_data[0]:.0f}",
-                    #                     (x_, y_), cv2.FONT_HERSHEY_COMPLEX,
-                    #                     fontScale=fontscale, color=(0, 0, 0), thickness=1)
 
-    if mode == "symmetry" or mode == "squats":
-        new_dict = get_updated_keypoint_dict(keypoint_dict)
+            elif mode == "symmetry" and visibility:
+                # """displays symmetry breaks"""
+                angles_dict = get_angle_dict(keypoint_dict)
+                sym = define_symmetry(angles_dict)
 
-        if mode == "symmetry":
-            angles_dict = draw_angles(keypoint_dict)
-            sym = define_symmetry(angles_dict)
+                for key in sym.keys():
+                    if "hip_center" in key:
+                        key1 = key2 = "hip_center"
+                    elif "neck_center" in key:
+                        key1 = key2 = "neck_center"
+                    else:
+                        key1 = "right" + key
+                        key2 = "left" + key
+                    # ±, º
+                    x1, y1, _ = all_keypoints[key1]
+                    x2, y2, _ = all_keypoints[key2]
+                    x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+                    deviation = int(abs(sym[key]))
+                    im_wk = draw_angle_in_circle(im_wk, deviation, (x1, y1), scale=scale)
+                    im_wk = draw_angle_in_circle(im_wk, deviation, (x2, y2), scale=scale)
 
-            for key in sym.keys():
-                # print(key)
-                if "hip_center" in key:
-                    key1 = key2 = "hip_center"
-                elif "neck_center" in key:
-                    key1 = key2 = "neck_center"
-                else:
-                    key1 = "right" + key
-                    key2 = "left" + key
-                # ±, º
-                x1, y1, _ = new_dict[key1]
-                x2, y2, _ = new_dict[key2]
-                x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
-                deviation = int(abs(sym[key]))
-                im_wk = draw_angle_in_circle(im_wk, deviation, (x1, y1), scale=scale)
-                im_wk = draw_angle_in_circle(im_wk, deviation, (x2, y2), scale=scale)
+                if len(sym) > 0:
+                    print(sym)
 
-            if len(sym) > 0:
-                print(sym)
+            elif mode == "gravity_center":
+                # """displays center of gravity"""
+                xline, yline = center_of_gravity(all_keypoints)
+                x1, y1 = [int(p) for p in xline]
+                x2, y2 = [int(p) for p in yline]
+                div = 1.0 * (x2 - x1) if x2 != x1 else .00001
+                a = (1.0 * (y2 - y1)) / div
+                b = -a * x1 + y1
+                y1_, y2_ = 0, im_wk.shape[1]
+                x1_ = int((y1_ - b) / a)
+                x2_ = int((y2_ - b) / a)
+                line_color = (255, 100, 100)
+                point_color = (255, 100, 100)
+                line_length = max(im_wk.shape)//3
 
-        elif mode == "squats":
-            check, coords = check_squats(new_dict)
-
-            if check:
-                color1 = (0, 0, 255)
-                color2 = (0, 0, 255)
-                thickness = thickness
-            else:
-                color1 = (0, 255, 0)
-                color2 = (255, 255, 255)
-                thickness = 1
-
-            x1, y1, _ = [int(x) for x in coords[0]]
-            x2, y2, _ = [int(x) for x in coords[1]]
-            im_wk = cv2.circle(im_wk, (x1, y1), radius=point_radius * 2, color=color2, thickness=-1)
-            im_wk = cv2.circle(im_wk, (x2, y2), radius=point_radius * 2, color=color2, thickness=-1)
-            im_wk = cv2.line(im_wk, (x1 - 100, y1), (x1 + 100, y1), color=color1, thickness=thickness)
-            im_wk = cv2.line(im_wk, (x2 - 100, y2), (x2 + 100, y2), color=color1, thickness=thickness)
+                # draw lines
+                im_wk = cv2.line(im_wk, (x1_, y1_), (x2_, y2_), color=line_color, thickness=1, lineType=cv2.LINE_AA)
+                im_wk = cv2.line(im_wk, (x2 - line_length, y1), (x1 + line_length, y1), color=line_color, thickness=1,
+                                 lineType=cv2.LINE_AA)
+                # draw points
+                im_wk = cv2.circle(im_wk, (x1, y1), radius=point_radius * 2, color=point_color, thickness=-1,
+                                   lineType=cv2.LINE_AA)
+                im_wk = cv2.circle(im_wk, (x2, y2), radius=point_radius, color=(255,255,255), thickness=-1,
+                                   lineType=cv2.LINE_AA)
 
     return im_wk
 
@@ -512,7 +537,7 @@ class DetectronVideo:
             if save_output:
                 output_file.write(frame)
 
-            yield (frame, keypoint_dict)
+            yield frame, keypoint_dict
 
             current_frame += 1
 
@@ -525,7 +550,13 @@ class DetectronVideo:
 
 if __name__ == "__main__":
     # test_from_file()
-    im = cv2.imread("tests/test.jpg")
-    im = draw_box_with_text(im, (1, 1, 100, 100), "Oh my god! It is almost 6:00 a.m.")
+    im_ = cv2.imread("tests/test.jpg")
+    # im = draw_box_with_text(im, "Very good!", mode=0, edge_color=(255, 0, 0))
+    from sandbox import ttt
+
+    keyps = get_updated_keypoint_dict(ttt)
+
+    im = draw_skeleton(im_, ttt, thickness=2, headless=True, threshold=0)
+    im, _ = draw_joints(im, ttt, headless=True, threshold=0)
     cv2.imshow("", im)
     cv2.waitKey(0)

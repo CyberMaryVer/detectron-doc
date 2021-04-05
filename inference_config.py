@@ -77,7 +77,7 @@ def get_parser():
     parser.add_argument("--webcam", action="store_true", help="Take inputs from webcam.")
     parser.add_argument("--video", help="Path to video file.")
     parser.add_argument("--image", help="Path to image file.")
-    parser.add_argument("--output", default="store_true", help="Set this parameter to save the output")
+    parser.add_argument("--output", action="store_true", help="Set this parameter to save the output")
     parser.add_argument("--output_name", default=None, type=str, help="Output file name")
     parser.add_argument("--csv", action="store_true", help="Save results to csv file.")
     parser.add_argument("--test", action="store_true", help="Run test inference on image.")
@@ -86,6 +86,7 @@ def get_parser():
     parser.add_argument("--skeleton", default=1, type=int, help="By default draws full skeleton [1], choose [0] "
                                                                 "if you don't want to draw it and [2] to draw "
                                                                 "only body connections.")
+    parser.add_argument("--joints", default=1, type=int, help="If set to 0 - shows only connections.")
     parser.add_argument("--side", default=None, help="If [L, R] is choosen, visualizes only one side.")
     parser.add_argument("--mode", default=None, help="A file or directory to save output.")
     parser.add_argument("--instance", default=0, type=int, help="Number of instance for multiperson mode.")
